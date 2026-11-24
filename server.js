@@ -6,6 +6,18 @@ import { extractAll } from './lib/extractor.js';
 
 const PORT = 4321;
 const app = express();
+
+// Local-only API with privileged actions (move files, run extractors, folder dialog).
+// Host check blocks DNS rebinding; Origin check blocks cross-site POSTs from other pages.
+const ALLOWED_HOSTS = new Set([`localhost:${PORT}`, `127.0.0.1:${PORT}`]);
+const ALLOWED_ORIGINS = new Set([...ALLOWED_HOSTS].map((h) => `http://${h}`));
+app.use((req, res, next) => {
+  if (!ALLOWED_HOSTS.has(req.headers.host)) return res.status(403).send('Forbidden host');
+  if (req.method !== 'GET' && req.method !== 'HEAD' && !ALLOWED_ORIGINS.has(req.headers.origin)) {
+    return res.status(403).json({ error: 'Forbidden origin' });
+  }
+  next();
+});
 app.use(express.json({ limit: '2mb' }));
 app.use(express.static(path.resolve('public')));
 
