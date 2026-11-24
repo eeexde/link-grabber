@@ -7,7 +7,29 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const rootDomain = (u) => { try { return new URL(u).hostname.split('.').slice(-2).join('.'); } catch { return ''; } };
 const basename = (p) => p.split(/[\\/]/).pop();
 
+// Snapshot of the current/last job so a refreshed page can restore its view and finish
+// post-processing (moves, extraction). Persisted because the worker can be unloaded when idle.
+let snapshot = null;
+const snapshotReady = chrome.storage.local.get('snapshot').then((r) => { snapshot ??= r.snapshot || null; });
+const saveSnapshot = () => chrome.storage.local.set({ snapshot }).catch(() => {});
+
+function record(msg) {
+  if (!snapshot) return;
+  const time = new Date().toLocaleTimeString();
+  if (msg.type === 'item') {
+    const it = snapshot.items[msg.index];
+    Object.assign(it, { status: msg.status, name: msg.name || it.name, message: msg.message, path: msg.path || it.path });
+    snapshot.log.push(`[${time}] #${msg.index + 1} ${msg.status}${msg.message ? ': ' + msg.message : it.name ? ' ' + it.name : ''}`);
+  } else if (msg.type === 'log') {
+    snapshot.log.push(`[${time}] ${msg.message}`);
+  } else if (msg.type === 'finished') {
+    snapshot.finished = { stopped: msg.stopped, failed: msg.failed };
+  } else return; // progress is not persisted
+  saveSnapshot();
+}
+
 function send(msg) {
+  record(msg);
   for (const p of ports) { try { p.postMessage(msg); } catch {} }
 }
 
@@ -36,12 +58,18 @@ chrome.runtime.onConnect.addListener((port) => {
   if (port.name !== 'lg-ui') return;
   ports.add(port);
   port.onDisconnect.addListener(() => ports.delete(port));
+  const hello = async () => {
+    await snapshotReady;
+    port.postMessage({ type: 'hello', running: !!job, snapshot });
+  };
   port.onMessage.addListener((msg) => {
     if (msg.type === 'start') startJob(msg).catch((e) => send({ type: 'log', message: 'Fatal: ' + e.message }));
     else if (msg.type === 'stop') stopJob();
-    else if (msg.type === 'ping') port.postMessage({ type: 'hello', running: !!job });
+    else if (msg.type === 'ping') hello();
+    else if (msg.type === 'moved' && snapshot?.items[msg.index]) { snapshot.items[msg.index].moved = true; saveSnapshot(); }
+    else if (msg.type === 'ack' && !job) { snapshot = null; chrome.storage.local.remove('snapshot').catch(() => {}); }
   });
-  port.postMessage({ type: 'hello', running: !!job });
+  hello();
 });
 
 // ---- Download capture -------------------------------------------------------
@@ -159,9 +187,11 @@ async function processItem(i) {
   }
 }
 
-async function startJob({ items, mode }) {
+async function startJob({ items, mode, folder, extract }) {
   if (job) return send({ type: 'log', message: 'A job is already running in the extension.' });
   job = { items, mode, current: null, dlId: null, tabIds: new Set(), stopped: false, failed: 0 };
+  snapshot = { items: items.map((it) => ({ ...it, status: 'queued' })), log: [], folder, extract, mode, finished: null };
+  saveSnapshot();
   send({ type: 'start', count: items.length });
   try { chrome.downloads.setUiOptions?.({ enabled: false }); } catch {} // hide download bubble
 

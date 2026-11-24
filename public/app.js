@@ -13,11 +13,41 @@ const fmt = (b) => {
   return b.toFixed(i ? 1 : 0) + ' ' + u[i];
 };
 
+function appendLog(line) {
+  logEl.textContent += line + '\n';
+  logEl.scrollTop = logEl.scrollHeight;
+}
+
 function log(msg) {
   const line = `[${new Date().toLocaleTimeString()}] ${msg}`;
   fetch('/log', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ line }) }).catch(() => {});
-  logEl.textContent += line + '\n';
-  logEl.scrollTop = logEl.scrollHeight;
+  appendLog(line);
+}
+
+/** Move a finished file into the job folder; tell the extension so a later reload won't redo it. */
+function queueMove(index, from) {
+  if (!job) return;
+  const { folder } = job;
+  job.moves = job.moves.then(() => post('/move', { from, folder }))
+    .then((r) => { log(`Moved → ${r.to}`); toExt({ type: 'moved', index }); })
+    .catch((err) => { if (job) job.moveFailed = true; log(`Move failed for ${from}: ${err.message}`); });
+}
+
+/** Rebuild the view from the extension's saved job after a page refresh, then catch up. */
+function restore(s, running) {
+  items = s.items.map((it) => ({ ...it, meta: it.message, pct: ['done', 'skipped'].includes(it.status) ? 100 : 0 }));
+  current = items.findIndex((it) => ['opening', 'downloading'].includes(it.status));
+  logEl.textContent = '';
+  s.log.forEach(appendLog);
+  if (s.folder) $('folder').value = s.folder;
+  if (typeof s.extract === 'boolean') $('extract').checked = s.extract;
+  if (s.mode) $('mode').value = s.mode;
+  job = { folder: s.folder, extract: s.extract, moves: Promise.resolve(), moveFailed: false };
+  log(running ? 'Reconnected to running job.' : 'Restored last job.');
+  items.forEach((it, i) => { if (it.status === 'done' && it.path && !it.moved) queueMove(i, it.path); });
+  render();
+  if (s.finished) finish(s.finished);
+  else if (!running) finish({ interrupted: true });
 }
 
 function render() {
@@ -53,8 +83,13 @@ window.addEventListener('message', (m) => {
   if (m.source !== window || m.data?.__lg !== 'ext') return;
   const e = m.data;
   if (e.type === 'hello') {
-    if (!extReady) log('Edge extension connected. Ready.');
-    extReady = true; $('ext-banner').hidden = true; setRunning(!!job);
+    const first = !extReady;
+    extReady = true; $('ext-banner').hidden = true;
+    if (first) {
+      log('Edge extension connected. Ready.');
+      if (e.snapshot && !job) restore(e.snapshot, e.running);
+    }
+    setRunning(e.running || !!job);
     $('summary').textContent ||= 'Extension connected';
     return;
   }
@@ -67,12 +102,7 @@ window.addEventListener('message', (m) => {
     if (e.status === 'done' || e.status === 'skipped') it.pct = 100;
     if (e.message) { it.meta = e.message; log(`#${e.index + 1} ${e.status}: ${e.message}`); }
     else log(`#${e.index + 1} ${e.status}${it.name ? ' ' + it.name : ''}`);
-    if (e.status === 'done' && e.path && job) {
-      const { folder } = job;
-      job.moves = job.moves.then(() => post('/move', { from: e.path, folder }))
-        .then((r) => log(`Moved → ${r.to}`))
-        .catch((err) => { job && (job.moveFailed = true); log(`Move failed for ${e.path}: ${err.message}`); });
-    }
+    if (e.status === 'done' && e.path) queueMove(e.index, e.path);
   } else if (e.type === 'progress') {
     const it = items[current]; if (!it) return;
     const now = Date.now();
@@ -89,16 +119,18 @@ window.addEventListener('message', (m) => {
   render();
 });
 
-async function finish({ stopped, failed }) {
+async function finish({ stopped, failed, interrupted }) {
   const j = job; if (!j) return setRunning(false);
   await j.moves;
-  if (stopped) log('Stopped by user.');
+  if (interrupted) log('Previous job was interrupted (browser closed?). Press Start to resume; finished files are skipped.');
+  else if (stopped) log('Stopped by user.');
   else if (failed || j.moveFailed) log(`${failed} download(s) failed — skipping extraction. Press Start again; finished files are skipped.`);
   else if (j.extract) {
     log('All downloads done. Extracting…');
     try { await post('/extract', { folder: j.folder }); } catch (err) { log('Extract error: ' + err.message); }
   }
   job = null; setRunning(false); log('Finished.');
+  toExt({ type: 'ack' }); // post-processing done; extension can drop its saved job
 }
 
 // Extraction progress from the server.
@@ -126,7 +158,7 @@ $('start').onclick = async () => {
     job = { folder, extract: $('extract').checked, moves: Promise.resolve(), moveFailed: false };
     setRunning(true); render();
     log(`Saving to ${folder}`);
-    toExt({ type: 'start', items: prepared, mode: $('mode').value });
+    toExt({ type: 'start', items: prepared, mode: $('mode').value, folder, extract: job.extract });
   } catch (err) {
     log('Error: ' + err.message);
   }

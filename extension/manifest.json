@@ -3,7 +3,7 @@
   "name": "Link Grabber Helper",
   "version": "1.0.0",
   "description": "Sequentially downloads links queued from the local Link Grabber app (http://localhost:4321).",
-  "permissions": ["downloads", "downloads.ui", "tabs", "scripting"],
+  "permissions": ["downloads", "downloads.ui", "tabs", "scripting", "storage"],
   "host_permissions": ["<all_urls>"],
   "action": { "default_title": "Open Link Grabber" },
   "background": { "service_worker": "background.js" },
