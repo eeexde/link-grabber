@@ -1,0 +1,69 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Link Grabber</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <main>
+    <header>
+      <h1>Link Grabber</h1>
+      <p class="sub">Sequential download through Chrome, then extract.</p>
+    </header>
+
+    <section class="card banner" id="ext-banner" hidden>
+      <strong>Edge extension not detected.</strong>
+      Open this page in Edge, in the profile you want to use, then load the helper once:
+      <ol>
+        <li>Go to <code>edge://extensions</code> and turn on <b>Developer mode</b>.</li>
+        <li>Click <b>Load unpacked</b> and pick the <code>extension</code> folder inside this project.</li>
+        <li>Refresh this page.</li>
+      </ol>
+    </section>
+
+    <section class="card">
+      <label for="links">Links <span class="hint">one per line</span></label>
+      <textarea id="links" rows="10" spellcheck="false"
+        placeholder="https://filehost.example/abc123#Name.part01.rar&#10;https://filehost.example/def456#Name.part02.rar"></textarea>
+
+      <div class="row">
+        <div class="field grow">
+          <label for="folder">Download folder</label>
+          <div class="picker">
+            <input id="folder" value="downloads" />
+            <button type="button" id="browse" class="ghost">Browse…</button>
+          </div>
+        </div>
+        <div class="field">
+          <label for="mode">Browser window</label>
+          <select id="mode">
+            <option value="minimized">Minimized</option>
+            <option value="visible">Visible</option>
+          </select>
+        </div>
+      </div>
+
+      <label class="check"><input type="checkbox" id="extract" checked /> Extract archives when all downloads finish</label>
+
+      <div class="actions">
+        <button id="start">Start</button>
+        <button id="stop" class="ghost" disabled>Stop</button>
+        <span id="summary"></span>
+      </div>
+    </section>
+
+    <section class="card">
+      <h2>Queue</h2>
+      <ol id="queue"><li class="empty">Nothing queued.</li></ol>
+    </section>
+
+    <section class="card">
+      <h2>Log</h2>
+      <pre id="log"></pre>
+    </section>
+  </main>
+  <script src="app.js"></script>
+</body>
+</html>

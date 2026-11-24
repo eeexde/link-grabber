@@ -1,0 +1,5 @@
+node_modules/
+downloads/
+link-grabber.log
+.chrome-profile/
+.browser-profile/

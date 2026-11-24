@@ -1,0 +1,17 @@
+{
+  "manifest_version": 3,
+  "name": "Link Grabber Helper",
+  "version": "1.0.0",
+  "description": "Sequentially downloads links queued from the local Link Grabber app (http://localhost:4321).",
+  "permissions": ["downloads", "downloads.ui", "tabs", "scripting"],
+  "host_permissions": ["<all_urls>"],
+  "action": { "default_title": "Open Link Grabber" },
+  "background": { "service_worker": "background.js" },
+  "content_scripts": [
+    {
+      "matches": ["http://localhost:4321/*", "http://127.0.0.1:4321/*"],
+      "js": ["bridge.js"],
+      "run_at": "document_start"
+    }
+  ]
+}

@@ -1,0 +1,13 @@
+{
+  "name": "link-grabber",
+  "version": "1.0.0",
+  "description": "Local web UI + Edge/Chrome extension: download links one at a time in your real browser profile, then extract archives",
+  "main": "server.js",
+  "type": "module",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "express": "^4.21.2"
+  }
+}
